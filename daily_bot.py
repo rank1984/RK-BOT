@@ -4,6 +4,12 @@ from datetime import datetime, time
 from telegram import Bot
 import os
 
+import os
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+
+print("Token:", TELEGRAM_TOKEN)
+print("Chat ID:", TELEGRAM_CHAT_ID)
 # Telegram מ-Secrets
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
@@ -105,3 +111,8 @@ else:
             send_message(live_msg)
         else:
             send_message("⚠️ LIVE SIGNALS EMPTY: No data available.")
+try:
+    bot.get_me()
+    print("✅ Telegram Bot connected successfully")
+except Exception as e:
+    print(f"❌ Telegram connection error: {e}")
