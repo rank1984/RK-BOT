@@ -1,8 +1,8 @@
 import yfinance as yf
 import pandas as pd
-from datetime import datetime, time
 import requests
 import os
+from datetime import datetime, time
 
 # -------------------------
 # Telegram מ-Secrets
@@ -34,6 +34,26 @@ TARGET_PCT = 0.10   # רווח יעד ~10%
 STOP_PCT = 0.03     # סטופ לוס 3%
 
 # -------------------------
+# רשימת מניות "קטנות" אוטומטית
+# -------------------------
+def fetch_small_stocks(limit=500):
+    # כאן אנחנו נשתמש ב-yfinance כדי למשוך tickers מה-S&P500
+    try:
+        tickers = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]['Symbol'].tolist()
+    except Exception:
+        # אם דף Wikipedia חסום, נשתמש בדוגמה של כמה מניות פופולריות קטנות
+        tickers = ["AAPL","MSFT","TSLA","AMD","NVDA","INTC","FB","NFLX","GOOGL","SQ"]
+    small_tickers = []
+    for t in tickers:
+        try:
+            price = yf.Ticker(t).history(period='1d')['Close'][-1]
+            if price <= 20:
+                small_tickers.append(t)
+        except:
+            continue
+    return small_tickers[:limit]
+
+# -------------------------
 # פונקציות עזר
 # -------------------------
 def fetch_data(ticker):
@@ -48,8 +68,7 @@ def fetch_data(ticker):
         volume = hist['Volume'][-1]
         volatility = (high - low)/low
         return {'ticker': ticker, 'last': last_price, 'high': high, 'low': low, 'volume': volume, 'volatility': volatility}
-    except Exception as e:
-        print(f"Error fetching {ticker}: {e}")
+    except:
         return None
 
 def ai_score(data):
@@ -65,23 +84,17 @@ def calculate_levels(last, high):
     return entry, target, stop
 
 # -------------------------
-# קבלת רשימת S&P500 מ-CSV
-# -------------------------
-try:
-    sp500 = pd.read_csv('sp500.csv')
-    TICKERS = sp500['Symbol'].tolist()
-    print(f"✅ Loaded {len(TICKERS)} S&P500 tickers from CSV")
-except Exception as e:
-    raise RuntimeError(f"❌ Failed to load S&P500 tickers: {e}")
-
-# -------------------------
 # PRE-MARKET
 # -------------------------
-pre_market = []
+small_stocks = fetch_small_stocks()
+if not small_stocks:
+    send_message("⚠️ PRE-MARKET EMPTY: No suitable tickers found!")
+    exit()
 
-for t in TICKERS:
+pre_market = []
+for t in small_stocks:
     data = fetch_data(t)
-    if data and data['last'] <= 20:
+    if data:
         score = ai_score(data)
         entry, target, stop = calculate_levels(data['last'], data['high'])
         pre_market.append({
@@ -93,41 +106,11 @@ for t in TICKERS:
             'Stop': stop
         })
 
-if not pre_market:
-    send_message("⚠️ PRE-MARKET EMPTY: No suitable tickers found! (maybe prices > $20 today)")
-else:
+if pre_market:
     df = pd.DataFrame(pre_market).sort_values(by='Score', ascending=False).head(10)
     msg = "🔥 PRE-MARKET TOP 10 🔥\n\n"
     for idx, row in df.iterrows():
         msg += f"{row['Ticker']} | Score: {row['Score']} | Last: {row['Last']} | Entry: {row['Entry']} | Target: {row['Target']} | Stop: {row['Stop']}\n"
     send_message(msg)
-
-    # -------------------------
-    # LIVE SIGNALS
-    # -------------------------
-    current_time = datetime.now().time()
-    if time(16,30) <= current_time <= time(17,30):
-        live_msg = "⚡ LIVE SIGNALS ⚡\n\n"
-        live_table = []
-        for idx, row in df.iterrows():
-            live_data = fetch_data(row['Ticker'])
-            if not live_data:
-                continue
-            live_price = live_data['last']
-            status = "BUY READY" if live_price >= row['Entry'] else "WAIT"
-            change_pct = round((live_price/row['Entry']-1)*100,2)
-            live_table.append({
-                'Ticker': row['Ticker'],
-                'Entry': row['Entry'],
-                'Target': row['Target'],
-                'Stop': row['Stop'],
-                'Live': live_price,
-                'Status': status,
-                'Change%': change_pct
-            })
-        if live_table:
-            live_df = pd.DataFrame(live_table).sort_values(by='Status', ascending=False)
-            live_msg += live_df.to_string(index=False)
-            send_message(live_msg)
-        else:
-            send_message("⚠️ LIVE SIGNALS EMPTY: No data available.")
+else:
+    send_message("⚠️ No small stocks found today.")
