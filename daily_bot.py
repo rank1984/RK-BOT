@@ -1,7 +1,7 @@
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, time
-from telegram import Bot
+import requests
 import os
 
 # -------------------------
@@ -13,21 +13,20 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     raise ValueError("❌ Telegram TOKEN or CHAT_ID not set in environment variables!")
 
-bot = Bot(token=TELEGRAM_TOKEN)
-
-# בדיקה אם הבוט מחובר
-try:
-    info = bot.get_me()
-    print(f"✅ Telegram Bot connected: @{info.username}")
-except Exception as e:
-    raise ConnectionError(f"❌ Telegram connection failed: {e}")
-
+# -------------------------
+# פונקציה לשליחת הודעות
+# -------------------------
 def send_message(text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {"chat_id": TELEGRAM_CHAT_ID, "text": text}
     try:
-        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text)
-        print("✅ Message sent successfully")
+        r = requests.post(url, data=data)
+        if r.status_code == 200:
+            print("✅ Message sent successfully")
+        else:
+            print(f"❌ Failed to send message: {r.text}")
     except Exception as e:
-        print(f"❌ Failed to send message: {e}")
+        print(f"❌ Exception sending message: {e}")
 
 # -------------------------
 # הגדרות
