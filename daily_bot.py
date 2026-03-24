@@ -2,7 +2,7 @@ import yfinance as yf
 import pandas as pd
 import requests
 import os
-from datetime import datetime, time
+from datetime import datetime
 
 # -------------------------
 # Telegram מ-Secrets
@@ -13,6 +13,9 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     raise ValueError("❌ Telegram TOKEN or CHAT_ID not set in environment variables!")
 
+# -------------------------
+# פונקציה לשליחת הודעה + בדיקה
+# -------------------------
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": text}
@@ -22,14 +25,24 @@ def send_message(text):
             print(f"❌ Failed to send message: {r.text}")
         else:
             print("✅ Message sent successfully")
+        return r.status_code
     except Exception as e:
         print(f"❌ Exception sending message: {e}")
+        return None
+
+# -------------------------
+# שליחת הודעת TEST
+# -------------------------
+status = send_message("✅ RK-BOT Test message: Telegram connection OK!")
+if status != 200:
+    raise RuntimeError("❌ Telegram Test failed! Check TOKEN / CHAT_ID / Bot permissions.")
+else:
+    print("✅ Telegram test passed, continuing to fetch stocks...")
 
 # -------------------------
 # הגדרות מסחר
 # -------------------------
 BUDGET = 250
-MAX_POSITION = 100
 TARGET_PCT = 0.10   # רווח יעד ~10%
 STOP_PCT = 0.03     # סטופ לוס 3%
 
@@ -37,11 +50,10 @@ STOP_PCT = 0.03     # סטופ לוס 3%
 # רשימת מניות "קטנות" אוטומטית
 # -------------------------
 def fetch_small_stocks(limit=500):
-    # כאן אנחנו נשתמש ב-yfinance כדי למשוך tickers מה-S&P500
     try:
         tickers = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]['Symbol'].tolist()
     except Exception:
-        # אם דף Wikipedia חסום, נשתמש בדוגמה של כמה מניות פופולריות קטנות
+        # fallback אם Wikipedia חסום
         tickers = ["AAPL","MSFT","TSLA","AMD","NVDA","INTC","FB","NFLX","GOOGL","SQ"]
     small_tickers = []
     for t in tickers:
