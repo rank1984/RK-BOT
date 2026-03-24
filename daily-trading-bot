@@ -1,0 +1,8 @@
+daily-trading-bot/
+│
+├─ daily_bot.py
+├─ config.py
+├─ requirements.txt
+└─ .github/
+    └─ workflows/
+        └─ run_bot.yml
