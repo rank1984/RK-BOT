@@ -2,7 +2,7 @@ import os
 import requests
 import yfinance as yf
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
 
 # -------------------------
@@ -26,14 +26,10 @@ def send_message(text):
         print(f"❌ Exception sending message: {e}")
         return None
 
-# -------------------------
 # Test Telegram
-# -------------------------
 status = send_message("✅ RK-BOT Test message: Telegram connection OK!")
 if status != 200:
     raise RuntimeError("❌ Telegram Test failed! Check TOKEN / CHAT_ID / Bot permissions.")
-else:
-    print("✅ Telegram test passed!")
 
 # -------------------------
 # Trading config
@@ -44,29 +40,13 @@ STOP_PCT = 0.03     # סטופ לוס 3%
 MAX_STOCKS = 10     # מספר מניות ל-Pre-Market
 
 # -------------------------
-# Fetch S&P500 or fallback
+# Small stocks list
 # -------------------------
-def fetch_tickers():
-    try:
-        sp500 = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
-        tickers = sp500['Symbol'].tolist()
-    except:
-        tickers = ["AAPL","MSFT","TSLA","AMD","NVDA","INTC","FB","NFLX","GOOGL","SQ"]
-    return tickers
-
-# -------------------------
-# Filter small stocks
-# -------------------------
-def small_stocks(tickers, price_limit=20):
-    small = []
-    for t in tickers:
-        try:
-            price = yf.Ticker(t).history(period='1d')['Close'][-1]
-            if price <= price_limit:
-                small.append(t)
-        except:
-            continue
-    return small
+# כאן אפשר להוסיף רשימה ידנית או ממקור חיצוני
+small_stock_list = [
+    "AAPL","AMD","NVDA","INTC","TSLA","F","GE","ZM","PLTR","SQ",
+    "SPCE","SIRI","GME","AMC","NOK","BB","BBBY","FUBO","XPEV","CLNE"
+]
 
 # -------------------------
 # Fetch stock data
@@ -74,12 +54,12 @@ def small_stocks(tickers, price_limit=20):
 def fetch_data(ticker):
     try:
         data = yf.Ticker(ticker)
-        hist = data.history(period='2d', interval='5m')
+        hist = data.history(period='5d', interval='1d')
         if hist.empty:
             return None
         last_price = hist['Close'][-1]
-        high = hist['High'][-2]
-        low = hist['Low'][-2]
+        high = hist['High'][-1]
+        low = hist['Low'][-1]
         volume = hist['Volume'][-1]
         volatility = (high - low)/low
         return {'ticker': ticker, 'last': last_price, 'high': high, 'low': low, 'volume': volume, 'volatility': volatility}
@@ -105,19 +85,12 @@ def levels(last, high):
     return entry, target, stop
 
 # -------------------------
-# PRE-MARKET
+# PRE-MARKET TOP 10
 # -------------------------
-tickers = fetch_tickers()
-small = small_stocks(tickers)
-
-if not small:
-    send_message("⚠️ PRE-MARKET EMPTY: No suitable tickers found!")
-    exit()
-
 pre_market = []
-for t in small[:50]:  # בודק 50 מניות ראשונות כדי לא לעמוס
+for t in small_stock_list:
     data = fetch_data(t)
-    if data:
+    if data and data['last'] <= 20:  # מניות זולות
         score = ai_score(data)
         entry, target, stop = levels(data['last'], data['high'])
         pre_market.append({
@@ -129,6 +102,10 @@ for t in small[:50]:  # בודק 50 מניות ראשונות כדי לא לעמ
             'Stop': stop
         })
 
+if not pre_market:
+    send_message("⚠️ PRE-MARKET EMPTY: No suitable tickers found!")
+    exit()
+
 df = pd.DataFrame(pre_market).sort_values(by='Score', ascending=False).head(MAX_STOCKS)
 
 msg = f"🔥 PRE-MARKET TOP {MAX_STOCKS} 🔥\n"
@@ -138,13 +115,11 @@ for _, row in df.iterrows():
 send_message(msg)
 
 # -------------------------
-# LIVE SIGNALS
+# LIVE SIGNALS (סימולציה)
 # -------------------------
 print("⏳ Waiting for market open... (simulate live trading)")
-# כאן אפשר להוסיף לולאה שמרעננת כל 5–10 דקות ומעדכנת
-# לדוגמא:
-for i in range(3):  # לדוגמא שלוש בדיקות בלבד
-    time.sleep(10)  # מחכה 10 שניות בין בדיקות
+for i in range(3):  # לדוגמה: שלוש בדיקות
+    time.sleep(10)  # מחכה 10 שניות
     live_msg = "⚡ LIVE SIGNALS UPDATE ⚡\n"
     for _, row in df.iterrows():
         live_msg += f"{row['Ticker']} | Entry: {row['Entry']} | Target: {row['Target']} | Stop: {row['Stop']}\n"
