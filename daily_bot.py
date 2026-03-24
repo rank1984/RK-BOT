@@ -4,19 +4,30 @@ from datetime import datetime, time
 from telegram import Bot
 import os
 
-import os
+# -------------------------
+# Telegram מ-Secrets
+# -------------------------
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-print("Token:", TELEGRAM_TOKEN)
-print("Chat ID:", TELEGRAM_CHAT_ID)
-# Telegram מ-Secrets
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
-TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+    raise ValueError("❌ Telegram TOKEN or CHAT_ID not set in environment variables!")
+
 bot = Bot(token=TELEGRAM_TOKEN)
 
+# בדיקה אם הבוט מחובר
+try:
+    info = bot.get_me()
+    print(f"✅ Telegram Bot connected: @{info.username}")
+except Exception as e:
+    raise ConnectionError(f"❌ Telegram connection failed: {e}")
+
 def send_message(text):
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text)
+    try:
+        bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text)
+        print("✅ Message sent successfully")
+    except Exception as e:
+        print(f"❌ Failed to send message: {e}")
 
 # -------------------------
 # הגדרות
@@ -111,8 +122,3 @@ else:
             send_message(live_msg)
         else:
             send_message("⚠️ LIVE SIGNALS EMPTY: No data available.")
-try:
-    bot.get_me()
-    print("✅ Telegram Bot connected successfully")
-except Exception as e:
-    print(f"❌ Telegram connection error: {e}")
