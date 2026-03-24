@@ -32,11 +32,13 @@ def fetch_data(ticker):
         volume = hist['Volume'][-1]
         volatility = (high - low)/low
         return {'ticker': ticker, 'last': last_price, 'high': high, 'low': low, 'volume': volume, 'volatility': volatility}
-    except:
+    except Exception as e:
+        print(f"Error fetching {ticker}: {e}")
         return None
 
 def ai_score(data):
-    # דירוג לפי קרבה לשיא, נפח ותנודתיות
+    if not data:
+        return 0
     score = 50 + ((data['last']/data['high'])*25) + min(data['volume']/1_000_000,20) + (data['volatility']*20)
     return round(min(100, score),0)
 
@@ -50,6 +52,7 @@ def calculate_levels(last, high):
 # PRE-MARKET
 # -------------------------
 pre_market = []
+
 for t in TICKERS:
     data = fetch_data(t)
     if data and data['last'] <= 20:
@@ -64,33 +67,41 @@ for t in TICKERS:
             'Stop': stop
         })
 
-df = pd.DataFrame(pre_market).sort_values(by='Score', ascending=False).head(10)
-
-msg = "🔥 PRE-MARKET TOP 10 🔥\n\n"
-for idx, row in df.iterrows():
-    msg += f"{row['Ticker']} | Score: {row['Score']} | Last: {row['Last']} | Entry: {row['Entry']} | Target: {row['Target']} | Stop: {row['Stop']}\n"
-send_message(msg)
-
-# -------------------------
-# LIVE SIGNALS
-# -------------------------
-current_time = datetime.now().time()
-if time(16,30) <= current_time <= time(17,30):
-    live_msg = "⚡ LIVE SIGNALS ⚡\n\n"
-    live_table = []
+if not pre_market:
+    send_message("⚠️ PRE-MARKET EMPTY: No suitable tickers found!")
+else:
+    df = pd.DataFrame(pre_market).sort_values(by='Score', ascending=False).head(10)
+    msg = "🔥 PRE-MARKET TOP 10 🔥\n\n"
     for idx, row in df.iterrows():
-        live_price = fetch_data(row['Ticker'])['last']
-        status = "BUY READY" if live_price >= row['Entry'] else "WAIT"
-        change_pct = round((live_price/row['Entry']-1)*100,2)
-        live_table.append({
-            'Ticker': row['Ticker'],
-            'Entry': row['Entry'],
-            'Target': row['Target'],
-            'Stop': row['Stop'],
-            'Live': live_price,
-            'Status': status,
-            'Change%': change_pct
-        })
-    live_df = pd.DataFrame(live_table).sort_values(by='Status', ascending=False)
-    live_msg += live_df.to_string(index=False)
-    send_message(live_msg)
+        msg += f"{row['Ticker']} | Score: {row['Score']} | Last: {row['Last']} | Entry: {row['Entry']} | Target: {row['Target']} | Stop: {row['Stop']}\n"
+    send_message(msg)
+
+    # -------------------------
+    # LIVE SIGNALS
+    # -------------------------
+    current_time = datetime.now().time()
+    if time(16,30) <= current_time <= time(17,30):
+        live_msg = "⚡ LIVE SIGNALS ⚡\n\n"
+        live_table = []
+        for idx, row in df.iterrows():
+            live_data = fetch_data(row['Ticker'])
+            if not live_data:
+                continue
+            live_price = live_data['last']
+            status = "BUY READY" if live_price >= row['Entry'] else "WAIT"
+            change_pct = round((live_price/row['Entry']-1)*100,2)
+            live_table.append({
+                'Ticker': row['Ticker'],
+                'Entry': row['Entry'],
+                'Target': row['Target'],
+                'Stop': row['Stop'],
+                'Live': live_price,
+                'Status': status,
+                'Change%': change_pct
+            })
+        if live_table:
+            live_df = pd.DataFrame(live_table).sort_values(by='Status', ascending=False)
+            live_msg += live_df.to_string(index=False)
+            send_message(live_msg)
+        else:
+            send_message("⚠️ LIVE SIGNALS EMPTY: No data available.")
