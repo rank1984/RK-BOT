@@ -18,10 +18,10 @@ def send_message(text):
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": text}
     try:
         r = requests.post(url, data=data)
-        if r.status_code == 200:
-            print("✅ Message sent successfully")
-        else:
+        if r.status_code != 200:
             print(f"❌ Failed to send message: {r.text}")
+        else:
+            print("✅ Message sent successfully")
     except Exception as e:
         print(f"❌ Exception sending message: {e}")
 
@@ -30,8 +30,8 @@ def send_message(text):
 # -------------------------
 BUDGET = 250
 MAX_POSITION = 100
-TARGET_PCT = 0.10   # 10%
-STOP_PCT = 0.03     # 3%
+TARGET_PCT = 0.10   # רווח יעד ~10%
+STOP_PCT = 0.03     # סטופ לוס 3%
 
 # -------------------------
 # פונקציות עזר
@@ -65,19 +65,14 @@ def calculate_levels(last, high):
     return entry, target, stop
 
 # -------------------------
-# קבלת רשימת S&P500 עם User-Agent
+# קבלת רשימת S&P500 מ-CSV
 # -------------------------
 try:
-    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0 Safari/537.36'}
-    r = requests.get(url, headers=headers)
-    if r.status_code != 200:
-        raise RuntimeError(f"❌ Failed to fetch S&P500: {r.status_code}")
-    sp500 = pd.read_html(r.text)[0]
+    sp500 = pd.read_csv('sp500.csv')
     TICKERS = sp500['Symbol'].tolist()
-    print(f"✅ Loaded {len(TICKERS)} S&P500 tickers")
+    print(f"✅ Loaded {len(TICKERS)} S&P500 tickers from CSV")
 except Exception as e:
-    raise RuntimeError(f"❌ Failed to fetch S&P500 tickers: {e}")
+    raise RuntimeError(f"❌ Failed to load S&P500 tickers: {e}")
 
 # -------------------------
 # PRE-MARKET
