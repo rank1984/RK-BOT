@@ -1,4 +1,4 @@
 yfinance
 pandas
-numpy
-python-telegram-bot==20.3
+requests
+lxml
