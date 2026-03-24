@@ -4,9 +4,7 @@ from datetime import datetime, time
 from telegram import Bot
 import os
 
-# -------------------------
-# Telegram מ־Secrets
-# -------------------------
+# Telegram מ-Secrets
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 bot = Bot(token=TELEGRAM_TOKEN)
@@ -15,12 +13,9 @@ def send_message(text):
     bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text)
 
 # -------------------------
-# הגדרות סיכון
+# הגדרות
 # -------------------------
-BUDGET = 250
-MAX_POSITION = 100
-PROFIT_PCT = 0.03
-STOP_PCT = 0.02
+from config import BUDGET, MAX_POSITION, TARGET_PCT, STOP_PCT, TICKERS
 
 # -------------------------
 # פונקציות עזר
@@ -35,31 +30,30 @@ def fetch_data(ticker):
         high = hist['High'][-2]
         low = hist['Low'][-2]
         volume = hist['Volume'][-1]
-        return {'ticker': ticker, 'last': last_price, 'high': high, 'low': low, 'volume': volume}
+        volatility = (high - low)/low
+        return {'ticker': ticker, 'last': last_price, 'high': high, 'low': low, 'volume': volume, 'volatility': volatility}
     except:
         return None
 
-def ai_score(last, high, volume):
-    score = 50 + ((last/high)*30) + min(volume/1_000_000, 20)
+def ai_score(data):
+    # דירוג לפי קרבה לשיא, נפח ותנודתיות
+    score = 50 + ((data['last']/data['high'])*25) + min(data['volume']/1_000_000,20) + (data['volatility']*20)
     return round(min(100, score),0)
 
 def calculate_levels(last, high):
-    entry = round(high*1.01, 2)
-    target = round(entry*(1+PROFIT_PCT),2)
+    entry = round(high*1.01,2)
+    target = round(entry*(1+TARGET_PCT),2)
     stop = round(entry*(1-STOP_PCT),2)
     return entry, target, stop
 
 # -------------------------
-# רשימת מניות רחבה - לדוגמה
-# אפשר להחליף בקובץ CSV או API
+# PRE-MARKET
 # -------------------------
-tickers_list = yf.Tickers('AAPL TSLA AMC NIO GME FUBO PLTR BB SNDL NOK SPY QQQ DIA').tickers.keys()
-
 pre_market = []
-for t in tickers_list:
+for t in TICKERS:
     data = fetch_data(t)
-    if data and data['last'] <= 20:  # מניות זולות
-        score = ai_score(data['last'], data['high'], data['volume'])
+    if data and data['last'] <= 20:
+        score = ai_score(data)
         entry, target, stop = calculate_levels(data['last'], data['high'])
         pre_market.append({
             'Ticker': t,
@@ -70,7 +64,6 @@ for t in tickers_list:
             'Stop': stop
         })
 
-# בוחרים 10 מניות מובילות
 df = pd.DataFrame(pre_market).sort_values(by='Score', ascending=False).head(10)
 
 msg = "🔥 PRE-MARKET TOP 10 🔥\n\n"
