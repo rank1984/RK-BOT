@@ -2,8 +2,8 @@ name: Run Daily Trading Bot
 
 on:
   schedule:
-    - cron: '0 8 * * 1-5'  # בימים שני-שישי
-  workflow_dispatch:
+    - cron: '0 8 * * 1-5'  # הרצה אוטומטית כל יום מסחר
+  workflow_dispatch:  # אפשרות להרצה ידנית
 
 jobs:
   build:
