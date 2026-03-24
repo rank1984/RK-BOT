@@ -26,7 +26,7 @@ def send_message(text):
         print(f"❌ Exception sending message: {e}")
 
 # -------------------------
-# הגדרות
+# הגדרות מסחר
 # -------------------------
 BUDGET = 250
 MAX_POSITION = 100
@@ -65,10 +65,15 @@ def calculate_levels(last, high):
     return entry, target, stop
 
 # -------------------------
-# קבלת רשימת S&P500 (CSV מ-Yahoo Finance)
+# קבלת רשימת S&P500 עם User-Agent
 # -------------------------
 try:
-    sp500 = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
+    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0 Safari/537.36'}
+    r = requests.get(url, headers=headers)
+    if r.status_code != 200:
+        raise RuntimeError(f"❌ Failed to fetch S&P500: {r.status_code}")
+    sp500 = pd.read_html(r.text)[0]
     TICKERS = sp500['Symbol'].tolist()
     print(f"✅ Loaded {len(TICKERS)} S&P500 tickers")
 except Exception as e:
@@ -81,7 +86,7 @@ pre_market = []
 
 for t in TICKERS:
     data = fetch_data(t)
-    if data and data['last'] <= 20:   # סינון אוטומטי ≤$20
+    if data and data['last'] <= 20:
         score = ai_score(data)
         entry, target, stop = calculate_levels(data['last'], data['high'])
         pre_market.append({
