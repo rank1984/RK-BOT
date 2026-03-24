@@ -13,9 +13,6 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     raise ValueError("❌ Telegram TOKEN or CHAT_ID not set in environment variables!")
 
-# -------------------------
-# פונקציה לשליחת הודעות
-# -------------------------
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": text}
@@ -31,7 +28,10 @@ def send_message(text):
 # -------------------------
 # הגדרות
 # -------------------------
-from config import BUDGET, MAX_POSITION, TARGET_PCT, STOP_PCT, TICKERS
+BUDGET = 250
+MAX_POSITION = 100
+TARGET_PCT = 0.10   # 10%
+STOP_PCT = 0.03     # 3%
 
 # -------------------------
 # פונקציות עזר
@@ -65,13 +65,23 @@ def calculate_levels(last, high):
     return entry, target, stop
 
 # -------------------------
+# קבלת רשימת S&P500 (CSV מ-Yahoo Finance)
+# -------------------------
+try:
+    sp500 = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
+    TICKERS = sp500['Symbol'].tolist()
+    print(f"✅ Loaded {len(TICKERS)} S&P500 tickers")
+except Exception as e:
+    raise RuntimeError(f"❌ Failed to fetch S&P500 tickers: {e}")
+
+# -------------------------
 # PRE-MARKET
 # -------------------------
 pre_market = []
 
 for t in TICKERS:
     data = fetch_data(t)
-    if data and data['last'] <= 20:
+    if data and data['last'] <= 20:   # סינון אוטומטי ≤$20
         score = ai_score(data)
         entry, target, stop = calculate_levels(data['last'], data['high'])
         pre_market.append({
@@ -84,7 +94,7 @@ for t in TICKERS:
         })
 
 if not pre_market:
-    send_message("⚠️ PRE-MARKET EMPTY: No suitable tickers found!")
+    send_message("⚠️ PRE-MARKET EMPTY: No suitable tickers found! (maybe prices > $20 today)")
 else:
     df = pd.DataFrame(pre_market).sort_values(by='Score', ascending=False).head(10)
     msg = "🔥 PRE-MARKET TOP 10 🔥\n\n"
