@@ -7,6 +7,9 @@ from telegram import Bot
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
+if not TOKEN or not CHAT_ID:
+    raise ValueError("❌ יש להגדיר את TOKEN ו-CHAT_ID ב-GitHub Secrets!")
+
 bot = Bot(token=TOKEN)
 
 def send(msg):
@@ -43,7 +46,7 @@ for s in list(data)[:20]:  # עד 20 מניות
         change = float(change_str)
         volume = float(s.get("volume",0))
 
-        if 1 <= price <= 25:  # אפשר לשנות ל-25$ כדי לקבל יותר מניות
+        if 1 <= price <= 25:  # עד 25$ כדי לקבל יותר מניות
             entry = round(price*1.01,2)
             target = round(entry*1.12,2)
             stop = round(entry*0.97,2)
