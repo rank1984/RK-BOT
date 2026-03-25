@@ -1,62 +1,100 @@
 import os
 import requests
 import pandas as pd
-from datetime import datetime
+from telegram import Bot
 
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# --- Telegram ---
+TOKEN = os.getenv("TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+
+bot = Bot(token=TOKEN)
 
 def send(msg):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+    bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode='HTML')
 
-# -------------------------
-# בדיקת שוק פתוח
-# -------------------------
-def is_market_open():
-    now = datetime.utcnow()
-    return now.weekday() < 5 and 13 <= now.hour < 20
-
-# -------------------------
-# API חינמי (Financial Modeling Prep)
-# -------------------------
+# --- API ---
 API_KEY = os.getenv("API_KEY")
 URL = f"https://financialmodelingprep.com/api/v3/stock_market/gainers?apikey={API_KEY}"
+
+# --- הבאת נתונים ---
 try:
-    data = requests.get(URL).json()
-except:
-    send("❌ שגיאה בשליפת נתונים")
+    response = requests.get(URL)
+    if response.status_code != 200:
+        send(f"❌ שגיאת API: {response.status_code}")
+        exit()
+    data = response.json()
+except Exception as e:
+    send(f"❌ שגיאת API: {e}")
     exit()
+
+# --- טיפול במקרה שאין נתונים ---
+if not isinstance(data, list):
+    send(f"❌ בעיית API:\n{data}")
+    data = []
 
 stocks = []
 
-API_KEY = os.getenv("API_KEY")
-URL = f"https://financialmodelingprep.com/api/v3/stock_market/gainers?apikey={API_KEY}"
+# --- יצירת רשימת מניות לפני פתיחת השוק ---
+for s in list(data)[:20]:  # עד 20 מניות
+    try:
+        ticker = s.get("symbol")
+        price = float(s.get("price", 0))
+        change_str = s.get("changesPercentage", "0%").replace("%","")
+        change = float(change_str)
+        volume = float(s.get("volume",0))
 
-# -------------------------
-# בדיקה
-# -------------------------
+        if 1 <= price <= 25:  # אפשר לשנות ל-25$ כדי לקבל יותר מניות
+            entry = round(price*1.01,2)
+            target = round(entry*1.12,2)
+            stop = round(entry*0.97,2)
+            score = min(100, round(change*3 + (volume/1_000_000)))
+
+            stocks.append({
+                "מניה": ticker,
+                "מחיר נוכחי": price,
+                "שינוי %": change,
+                "נפח": volume,
+                "כניסה": entry,
+                "יעד": target,
+                "סטופ": stop,
+                "דירוג": score
+            })
+    except:
+        continue
+
+# --- אם אין מניות בטווח המחיר, הצג את ה-10 הראשונות מכל שינוי ---
 if len(stocks) == 0:
-    send("⚠️ לא נמצאו מניות גם מה־API")
-    exit()
+    for s in list(data)[:10]:
+        ticker = s.get("symbol")
+        price = float(s.get("price",0))
+        change_str = s.get("changesPercentage","0%").replace("%","")
+        change = float(change_str)
+        volume = float(s.get("volume",0))
+        entry = round(price*1.01,2)
+        target = round(entry*1.12,2)
+        stop = round(entry*0.97,2)
+        score = round(change*3 + (volume/1_000_000))
+        stocks.append({
+            "מניה": ticker,
+            "מחיר נוכחי": price,
+            "שינוי %": change,
+            "נפח": volume,
+            "כניסה": entry,
+            "יעד": target,
+            "סטופ": stop,
+            "דירוג": score
+        })
 
-df = pd.DataFrame(stocks).sort_values(by="Score", ascending=False).head(10)
-
-# -------------------------
-# הודעה
-# -------------------------
-if is_market_open():
-    msg = "⚡ מניות חמות למסחר עכשיו ⚡\n\n"
+# --- שליחת הודעה לטלגרם ---
+if len(stocks) > 0:
+    df = pd.DataFrame(stocks).sort_values(by='דירוג', ascending=False)
+    msg = "<b>⚡ מניות מומלצות לפני פתיחת השוק:</b>\n\n"
+    for i,row in df.iterrows():
+        msg += (f"{row['מניה']}: מחיר {row['מחיר נוכחי']}$ | "
+                f"שינוי {row['שינוי %']}% | "
+                f"כניסה {row['כניסה']}$ | "
+                f"יעד {row['יעד']}$ | "
+                f"סטופ {row['סטופ']}$\n")
+    send(msg)
 else:
-    msg = "🌙 מניות לבדיקה לפני פתיחה 🌙\n\n"
-
-for _, r in df.iterrows():
-    msg += (
-        f"{r['Ticker']} | דירוג: {r['Score']}\n"
-        f"מחיר: {r['Price']} | שינוי: {r['Change']}%\n"
-        f"נפח: {int(r['Volume']/1_000_000)}M\n"
-        f"כניסה: {r['Entry']} | יעד: {r['Target']} | סטופ: {r['Stop']}\n"
-        f"----------------------\n"
-    )
-
-send(msg)
+    send("⚠️ לא נמצאו מניות מתאימות כרגע.")
