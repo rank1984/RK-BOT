@@ -3,57 +3,46 @@ import requests
 import pandas as pd
 from telegram import Bot
 
-# -----------------
-# 1️⃣ Secrets
-# -----------------
-API_KEY = os.getenv("API_KEY")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# 🔹 הגדרות Telegram
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+bot = Bot(token=TELEGRAM_TOKEN)
 
-if not API_KEY or not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-    raise ValueError("❌ API_KEY או TELEGRAM_TOKEN/CHAT_ID לא מוגדרים ב-Secrets")
-
-# -----------------
-# 2️⃣ משיכת נתונים מה-API
-# -----------------
-url = f"https://financialmodelingprep.com/api/v3/stock-screener?priceLowerThan=50&volumeMoreThan=50000&apikey={API_KEY}"
+# 🔹 הגדרת ה-API של FMP (חינמי)
+API_KEY = os.environ.get("API_KEY")  # המפתח החינמי שלך
+url = f"https://financialmodelingprep.com/api/v3/stock-screener?marketCapMoreThan=0&volumeMoreThan=50000&priceLowerThan=50&apikey={API_KEY}"
 
 try:
-    response = requests.get(url)
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers)
     response.raise_for_status()
     data = response.json()
 except Exception as e:
-    raise RuntimeError(f"❌ לא הצלחנו למשוך נתונים מה-API: {e}")
+    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=f"❌ לא הצלחנו למשוך נתונים מה-API: {e}")
+    raise SystemExit
 
+# 🔹 בדיקה אם יש נתונים
 if not data:
-    message = "⚠️ לא נמצאו מניות מתאימות כרגע."
+    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text="⚠️ לא נמצאו מניות מתאימות כרגע")
+    raise SystemExit
+
+# 🔹 יצירת DataFrame ומיון לפי שינוי יומי (או פוטנציאל)
+df = pd.DataFrame(data)
+if 'changesPercentage' in df.columns:
+    df['changesPercentage'] = df['changesPercentage'].str.replace('%','').astype(float)
+    df = df.sort_values(by='changesPercentage', ascending=False)
 else:
-    # -----------------
-    # 3️⃣ עיבוד הנתונים
-    # -----------------
-    df = pd.DataFrame(data)
+    df['changesPercentage'] = 0
 
-    # ממיין לפי שינוי צפוי (changesPercentage)
-    if 'changesPercentage' in df.columns:
-        df_sorted = df.sort_values(by="changesPercentage", ascending=False).head(10)
-    else:
-        df_sorted = df.head(10)
+# 🔹 בוחרים את 20 הראשונים
+df_top = df.head(20)
+# 🔹 בוחרים רק עמודות רלוונטיות
+df_top = df_top[['symbol','name','price','changesPercentage','volume']]
 
-    # בונה הודעה בעברית
-    message = "📈 מניות מומלצות לבדיקה:\n\n"
-    for i, row in df_sorted.iterrows():
-        symbol = row.get("symbol", "N/A")
-        name = row.get("name", "N/A")
-        price = row.get("price", "N/A")
-        change = row.get("changesPercentage", "N/A")
-        message += f"{symbol} - {name}\nמחיר: {price}$, שינוי צפוי: {change}\n\n"
+# 🔹 הפיכת הטבלה לטקסט קריא בעברית
+message = "📊 מניות עם פוטנציאל:\n\n"
+for i, row in df_top.iterrows():
+    message += f"{row['symbol']} - {row['name']}\nמחיר: ${row['price']}, שינוי: {row['changesPercentage']}%, נפח: {row['volume']}\n\n"
 
-# -----------------
-# 4️⃣ שליחת הודעה לטלגרם
-# -----------------
-bot = Bot(token=TELEGRAM_TOKEN)
-
-try:
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
-except Exception as e:
-    raise RuntimeError(f"❌ לא הצלחנו לשלוח הודעה לטלגרם: {e}")
+# 🔹 שליחת ההודעה ל-Telegram
+bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
