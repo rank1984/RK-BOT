@@ -1,27 +1,33 @@
-name: Run Daily Bot
+name: Run RK-BOT
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # מאפשר להריץ ידנית דרך GitHub
 
 jobs:
-  run:
+  run-bot:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
+    steps:
+      # 1️⃣ שלב: משיכת הקוד
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2️⃣ שלב: התקנת פייתון
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: 3.11
 
+      # 3️⃣ שלב: התקנת ספריות
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run daily_bot
-        run: python daily_bot.py
-        env:
-          TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      # 4️⃣ שלב: הרצת הבוט
+      - name: Run daily bot
+        env:  # כאן אנחנו מוסיפים את כל ה-Secrets
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           API_KEY: ${{ secrets.API_KEY }}
+        run: python daily_bot.py
