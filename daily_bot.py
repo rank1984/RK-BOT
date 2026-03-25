@@ -20,8 +20,8 @@ def is_market_open():
 # -------------------------
 # API חינמי (Financial Modeling Prep)
 # -------------------------
-URL = "https://financialmodelingprep.com/api/v3/stock_market/gainers?apikey=demo"
-
+API_KEY = os.getenv("zEWD5UCJZmlXTmNnvzGm1pKIyiSRGRqK")
+URL = f"https://financialmodelingprep.com/api/v3/stock_market/gainers?apikey={API_KEY}"
 try:
     data = requests.get(URL).json()
 except:
