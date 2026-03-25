@@ -1,7 +1,7 @@
 name: Run Bot
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # 🔥 רק ידני!
 
 jobs:
   run:
