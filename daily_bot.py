@@ -1,103 +1,64 @@
+import asyncio
 import os
 import requests
 import pandas as pd
 from telegram import Bot
 
-# --- Telegram ---
-TOKEN = os.getenv("TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+# ====== הגדרות ======
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+API_KEY = os.environ.get("API_KEY")  # מפתח ל-FMP או API אחר
 
-if not TOKEN or not CHAT_ID:
-    raise ValueError("❌ יש להגדיר את TOKEN ו-CHAT_ID ב-GitHub Secrets!")
+if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+    raise ValueError("❌ TELEGRAM_TOKEN או TELEGRAM_CHAT_ID לא מוגדרים ב-Secrets")
 
-bot = Bot(token=TOKEN)
+bot = Bot(token=TELEGRAM_TOKEN)
 
-def send(msg):
-    bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode='HTML')
+async def send_telegram(msg):
+    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode='HTML')
 
-# --- API ---
-API_KEY = os.getenv("API_KEY")
-URL = f"https://financialmodelingprep.com/api/v3/stock_market/gainers?apikey={API_KEY}"
-
-# --- הבאת נתונים ---
-try:
-    response = requests.get(URL)
-    if response.status_code != 200:
-        send(f"❌ שגיאת API: {response.status_code}")
-        exit()
-    data = response.json()
-except Exception as e:
-    send(f"❌ שגיאת API: {e}")
-    exit()
-
-# --- טיפול במקרה שאין נתונים ---
-if not isinstance(data, list):
-    send(f"❌ בעיית API:\n{data}")
-    data = []
-
-stocks = []
-
-# --- יצירת רשימת מניות לפני פתיחת השוק ---
-for s in list(data)[:20]:  # עד 20 מניות
+# ====== פונקציה להביא מניות קטנות ======
+def get_small_caps():
     try:
-        ticker = s.get("symbol")
-        price = float(s.get("price", 0))
-        change_str = s.get("changesPercentage", "0%").replace("%","")
-        change = float(change_str)
-        volume = float(s.get("volume",0))
+        url = f"https://financialmodelingprep.com/api/v3/stock/actives?apikey={API_KEY}"
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
 
-        if 1 <= price <= 25:  # עד 25$ כדי לקבל יותר מניות
-            entry = round(price*1.01,2)
-            target = round(entry*1.12,2)
-            stop = round(entry*0.97,2)
-            score = min(100, round(change*3 + (volume/1_000_000)))
+        # סינון מניות קטנות <= 25$
+        small_caps = [s for s in data if float(s.get("price", 0)) <= 25]
+        df = pd.DataFrame(small_caps)
+        if df.empty:
+            return None
 
-            stocks.append({
-                "מניה": ticker,
-                "מחיר נוכחי": price,
-                "שינוי %": change,
-                "נפח": volume,
-                "כניסה": entry,
-                "יעד": target,
-                "סטופ": stop,
-                "דירוג": score
-            })
-    except:
-        continue
+        # ממיין לפי volume גבוה ו-score (אם יש)
+        if 'changes' in df.columns:
+            df['Score'] = df['changes']  # ניתן לשנות קריטריון AI Score
+        else:
+            df['Score'] = 0
 
-# --- אם אין מניות בטווח המחיר, הצג את ה-10 הראשונות מכל שינוי ---
-if len(stocks) == 0:
-    for s in list(data)[:10]:
-        ticker = s.get("symbol")
-        price = float(s.get("price",0))
-        change_str = s.get("changesPercentage","0%").replace("%","")
-        change = float(change_str)
-        volume = float(s.get("volume",0))
-        entry = round(price*1.01,2)
-        target = round(entry*1.12,2)
-        stop = round(entry*0.97,2)
-        score = round(change*3 + (volume/1_000_000))
-        stocks.append({
-            "מניה": ticker,
-            "מחיר נוכחי": price,
-            "שינוי %": change,
-            "נפח": volume,
-            "כניסה": entry,
-            "יעד": target,
-            "סטופ": stop,
-            "דירוג": score
-        })
+        df = df.sort_values(by='Score', ascending=False).head(10)
+        return df[['ticker', 'price', 'Score']]
+    except Exception as e:
+        print("❌ שגיאה בקבלת מניות:", e)
+        return None
 
-# --- שליחת הודעה לטלגרם ---
-if len(stocks) > 0:
-    df = pd.DataFrame(stocks).sort_values(by='דירוג', ascending=False)
-    msg = "<b>⚡ מניות מומלצות לפני פתיחת השוק:</b>\n\n"
-    for i,row in df.iterrows():
-        msg += (f"{row['מניה']}: מחיר {row['מחיר נוכחי']}$ | "
-                f"שינוי {row['שינוי %']}% | "
-                f"כניסה {row['כניסה']}$ | "
-                f"יעד {row['יעד']}$ | "
-                f"סטופ {row['סטופ']}$\n")
-    send(msg)
-else:
-    send("⚠️ לא נמצאו מניות מתאימות כרגע.")
+# ====== פונקציה להכין הודעה ======
+def format_message(df):
+    if df is None or df.empty:
+        return "⚠️ לא נמצאו מניות מתאימות כרגע."
+    msg = "📊 מניות פוטנציאליות לפני פתיחת השוק:\n\n"
+    for idx, row in df.iterrows():
+        msg += f"🔹 {row['ticker']}\n"
+        msg += f"מחיר: ${row['price']}\n"
+        msg += f"AI Score: {row['Score']}\n\n"
+    return msg
+
+# ====== MAIN ======
+async def main():
+    df = get_small_caps()
+    msg = format_message(df)
+    await send_telegram(msg)
+
+if __name__ == "__main__":
+    asyncio.run(main())
