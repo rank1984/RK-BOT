@@ -20,7 +20,7 @@ def is_market_open():
 # -------------------------
 # API חינמי (Financial Modeling Prep)
 # -------------------------
-API_KEY = os.getenv("zEWD5UCJZmlXTmNnvzGm1pKIyiSRGRqK")
+API_KEY = os.getenv("API_KEY")
 URL = f"https://financialmodelingprep.com/api/v3/stock_market/gainers?apikey={API_KEY}"
 try:
     data = requests.get(URL).json()
@@ -30,32 +30,8 @@ except:
 
 stocks = []
 
-for s in data[:20]:  # לוקח 20 ראשונים
-    try:
-        price = float(s["price"])
-        change = float(s["changesPercentage"].replace("%",""))
-        volume = float(s.get("volume", 0))
-        ticker = s["symbol"]
-
-        if 1 <= price <= 20:
-            entry = round(price * 1.01, 2)
-            target = round(entry * 1.12, 2)
-            stop = round(entry * 0.97, 2)
-
-            score = min(100, round(change * 3 + (volume/1_000_000)))
-
-            stocks.append({
-                "Ticker": ticker,
-                "Score": score,
-                "Price": price,
-                "Entry": entry,
-                "Target": target,
-                "Stop": stop,
-                "Volume": volume,
-                "Change": change
-            })
-    except:
-        continue
+API_KEY = os.getenv("API_KEY")
+URL = f"https://financialmodelingprep.com/api/v3/stock_market/gainers?apikey={API_KEY}"
 
 # -------------------------
 # בדיקה
