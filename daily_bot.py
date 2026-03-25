@@ -2,6 +2,7 @@
 import requests
 import yfinance as yf
 import pandas as pd
+from datetime import datetime
 
 # -------------------------
 # TELEGRAM
@@ -13,39 +14,46 @@ def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
-# בדיקה
-send("✅ הבוט התחיל לעבוד!")
-
 # -------------------------
-# הגדרות
+# הגדרות מסחר
 # -------------------------
 TARGET = 0.12
 STOP = 0.03
 
 # -------------------------
-# רשימת מניות רחבה (אפשר להרחיב)
+# רשימת מניות רחבה יותר 🔥
 # -------------------------
 TICKERS = [
     "AAPL","AMD","NVDA","INTC","TSLA","F","GE","PLTR","SOFI","NIO",
     "LCID","RIVN","GME","AMC","BB","NOK","SIRI","SNAP","UBER","LYFT",
-    "PINS","DKNG","RIOT","MARA","CLNE","SPCE","OPEN","WISH","BBBY","FUBO"
+    "PINS","DKNG","RIOT","MARA","CLNE","SPCE","OPEN","WISH","BBBY","FUBO",
+    "XPEV","LI","BABA","JD","T","VZ","KO","PFE","CVNA","AFRM",
+    "UPST","SHOP","ROKU","SQ","PYPL","DIS","BA","UAL","CCL","NCLH"
 ]
 
 # -------------------------
-# פונקציה להבאת נתונים
+# בדיקת שוק פתוח
+# -------------------------
+def is_market_open():
+    now = datetime.utcnow()
+    return now.weekday() < 5 and 13 <= now.hour < 20
+
+# -------------------------
+# הבאת נתונים
 # -------------------------
 def get_data(t):
     try:
         d = yf.Ticker(t)
-        h = d.history(period="1d")
+        h = d.history(period="2d")
         if h.empty:
             return None
         
         price = h["Close"][-1]
         high = h["High"][-1]
         volume = h["Volume"][-1]
+        open_price = h["Open"][-1]
         
-        change = ((price - h["Open"][-1]) / h["Open"][-1]) * 100
+        change = ((price - open_price) / open_price) * 100
         
         return price, high, volume, change
     except:
@@ -63,7 +71,7 @@ def score(price, high, volume, change):
     return round(min(s, 100), 0)
 
 # -------------------------
-# חישוב רמות
+# רמות מסחר
 # -------------------------
 def levels(price, high):
     entry = round(high * 1.01, 2)
@@ -78,48 +86,66 @@ stocks = []
 
 for t in TICKERS:
     data = get_data(t)
-    if data:
+    if not data:
+        continue
+
+    price, high, volume, change = data
+
+    # תנאים שונים לפי מצב שוק
+    if is_market_open():
+        condition = (1 <= price <= 20 and volume > 1_000_000 and change > 2)
+    else:
+        condition = (1 <= price <= 20)  # 🔥 חשוב: בלי סינון חזק!
+
+    if condition:
+        s = score(price, high, volume, change)
+        entry, target, stop = levels(price, high)
+
+        stocks.append({
+            "Ticker": t,
+            "Score": s,
+            "Price": round(price, 2),
+            "Entry": entry,
+            "Target": target,
+            "Stop": stop
+        })
+
+# -------------------------
+# אם עדיין ריק → נציג TOP גם בלי סינון
+# -------------------------
+if not stocks:
+    for t in TICKERS:
+        data = get_data(t)
+        if not data:
+            continue
+        
         price, high, volume, change = data
         
-        # זיהוי אם השוק פתוח
-from datetime import datetime
-
-def is_market_open():
-    now = datetime.utcnow()
-    return now.weekday() < 5 and 13 <= now.hour < 20
-
-# תנאים שונים
-if is_market_open():
-    condition = (1 <= price <= 20 and volume > 1_000_000 and change > 3)
-else:
-    condition = (1 <= price <= 20 and volume > 500_000)
-
-if condition:
+        if 1 <= price <= 20:
             s = score(price, high, volume, change)
             entry, target, stop = levels(price, high)
-            
+
             stocks.append({
                 "Ticker": t,
                 "Score": s,
-                "Price": round(price,2),
+                "Price": round(price, 2),
                 "Entry": entry,
                 "Target": target,
                 "Stop": stop
             })
 
 # -------------------------
-# תוצאה
+# טופ 10
 # -------------------------
-if not stocks:
-    send("⚠️ לא נמצאו מניות מתאימות היום")
-    exit()
-
 df = pd.DataFrame(stocks).sort_values(by="Score", ascending=False).head(10)
 
+# -------------------------
+# הודעה בעברית
+# -------------------------
 if is_market_open():
     msg = "⚡ מניות למסחר (שוק פתוח) ⚡\n\n"
 else:
-    msg = "🌙 מניות לבדיקה לפני פתיחה (PRE-MARKET) 🌙\n\n"
+    msg = "🌙 מניות לבדיקה לפני פתיחה 🌙\n\n"
 
 for _, r in df.iterrows():
     msg += f"""
