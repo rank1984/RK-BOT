@@ -81,7 +81,20 @@ for t in TICKERS:
     if data:
         price, high, volume, change = data
         
-        if 1 <= price <= 20 and volume > 1_000_000 and change > 3:
+        # זיהוי אם השוק פתוח
+from datetime import datetime
+
+def is_market_open():
+    now = datetime.utcnow()
+    return now.weekday() < 5 and 13 <= now.hour < 20
+
+# תנאים שונים
+if is_market_open():
+    condition = (1 <= price <= 20 and volume > 1_000_000 and change > 3)
+else:
+    condition = (1 <= price <= 20 and volume > 500_000)
+
+if condition:
             s = score(price, high, volume, change)
             entry, target, stop = levels(price, high)
             
@@ -103,7 +116,10 @@ if not stocks:
 
 df = pd.DataFrame(stocks).sort_values(by="Score", ascending=False).head(10)
 
-msg = "🔥 TOP 10 מניות להיום 🔥\n\n"
+if is_market_open():
+    msg = "⚡ מניות למסחר (שוק פתוח) ⚡\n\n"
+else:
+    msg = "🌙 מניות לבדיקה לפני פתיחה (PRE-MARKET) 🌙\n\n"
 
 for _, r in df.iterrows():
     msg += f"""
