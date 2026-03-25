@@ -1,4 +1,4 @@
- import os
+import os
 import requests
 import yfinance as yf
 import pandas as pd
@@ -21,7 +21,7 @@ TARGET = 0.12
 STOP = 0.03
 
 # -------------------------
-# רשימת מניות רחבה יותר 🔥
+# רשימת מניות רחבה
 # -------------------------
 TICKERS = [
     "AAPL","AMD","NVDA","INTC","TSLA","F","GE","PLTR","SOFI","NIO",
@@ -52,7 +52,7 @@ def get_data(t):
         high = h["High"][-1]
         volume = h["Volume"][-1]
         open_price = h["Open"][-1]
-        
+
         change = ((price - open_price) / open_price) * 100
         
         return price, high, volume, change
@@ -65,7 +65,7 @@ def get_data(t):
 def score(price, high, volume, change):
     s = 0
     s += min(volume / 1_000_000, 30)
-    s += min(change * 2, 25)
+    s += min(max(change, 0) * 2, 25)  # שלא יפגע אם שלילי
     s += (price / high) * 25
     s += min(((high - price)/price) * 100, 20)
     return round(min(s, 100), 0)
@@ -80,7 +80,7 @@ def levels(price, high):
     return entry, target, stop
 
 # -------------------------
-# סריקה
+# סריקה (תמיד מביא נתונים!)
 # -------------------------
 stocks = []
 
@@ -91,13 +91,8 @@ for t in TICKERS:
 
     price, high, volume, change = data
 
-    # תנאים שונים לפי מצב שוק
-    if is_market_open():
-        condition = (1 <= price <= 20 and volume > 1_000_000 and change > 2)
-    else:
-        condition = (1 <= price <= 20)  # 🔥 חשוב: בלי סינון חזק!
-
-    if condition:
+    # 🔥 סינון חכם אבל לא חונק
+    if 1 <= price <= 20:
         s = score(price, high, volume, change)
         entry, target, stop = levels(price, high)
 
@@ -107,56 +102,38 @@ for t in TICKERS:
             "Price": round(price, 2),
             "Entry": entry,
             "Target": target,
-            "Stop": stop
+            "Stop": stop,
+            "Volume": volume,
+            "Change": round(change,2)
         })
 
 # -------------------------
-# אם עדיין ריק → נציג TOP גם בלי סינון
+# אם אין כלום → לא קורה יותר 😎
 # -------------------------
-if not stocks:
-    for t in TICKERS:
-        data = get_data(t)
-        if not data:
-            continue
-        
-        price, high, volume, change = data
-        
-        if 1 <= price <= 20:
-            s = score(price, high, volume, change)
-            entry, target, stop = levels(price, high)
-
-            stocks.append({
-                "Ticker": t,
-                "Score": s,
-                "Price": round(price, 2),
-                "Entry": entry,
-                "Target": target,
-                "Stop": stop
-            })
+if len(stocks) == 0:
+    send("⚠️ לא הצלחנו להביא נתונים בכלל")
+    exit()
 
 # -------------------------
-# טופ 10
+# TOP 10
 # -------------------------
 df = pd.DataFrame(stocks).sort_values(by="Score", ascending=False).head(10)
 
 # -------------------------
-# הודעה בעברית
+# הודעה בעברית (טבלה 🔥)
 # -------------------------
 if is_market_open():
-    msg = "⚡ מניות למסחר (שוק פתוח) ⚡\n\n"
+    msg = "⚡ מניות למסחר עכשיו ⚡\n\n"
 else:
     msg = "🌙 מניות לבדיקה לפני פתיחה 🌙\n\n"
 
 for _, r in df.iterrows():
-    msg += f"""
-{r['Ticker']}
-דירוג: {r['Score']}
-מחיר: {r['Price']}
-
-כניסה: {r['Entry']}
-יעד: {r['Target']}
-סטופ: {r['Stop']}
--------------------
-"""
+    msg += (
+        f"{r['Ticker']} | דירוג: {r['Score']}\n"
+        f"מחיר: {r['Price']} | שינוי: {r['Change']}%\n"
+        f"נפח: {int(r['Volume']/1_000_000)}M\n"
+        f"כניסה: {r['Entry']} | יעד: {r['Target']} | סטופ: {r['Stop']}\n"
+        f"----------------------\n"
+    )
 
 send(msg)
